@@ -345,27 +345,28 @@ class OverlayUI:
         self._improve_box.set_text(improve or "No improvements detected — looks good!")
 
     def _update_english(self, items: List[Dict]):
-        # Clear previous cards
+        self._english_items = items
+        self._render_english_cards()
+
+    def _render_english_cards(self):
         for w in self._eng_inner.winfo_children():
             w.destroy()
 
-        if not items:
-            self._no_english_label = tk.Label(
+        idx = self.nb.index(self._tab_english)
+        if not self._english_items:
+            self.nb.tab(idx, text="✨  English→Code")
+            tk.Label(
                 self._eng_inner,
                 text="No English lines detected.\nWrite a plain sentence in your .py file!",
-                font=FONT_UI, bg=BG, fg=TEXT_DIM, justify="center",
-            )
-            self._no_english_label.pack(pady=30)
-            # Switch tab badge off
-            idx = self.nb.index(self._tab_english)
-            self.nb.tab(idx, text="✨  English→Code")
+                font=FONT_UI,
+                bg=BG,
+                fg=TEXT_DIM,
+                justify="center",
+            ).pack(pady=30)
             return
 
-        # Update tab badge
-        idx = self.nb.index(self._tab_english)
-        self.nb.tab(idx, text=f"✨  English→Code  ({len(items)})")
-
-        for item in items:
+        self.nb.tab(idx, text=f"✨  English→Code  ({len(self._english_items)})")
+        for item in self._english_items:
             self._build_english_card(item)
 
     def _build_english_card(self, item: Dict):
@@ -386,8 +387,8 @@ class OverlayUI:
                            wraplength=340, padx=8, pady=4)
         eng_lbl.pack(fill="x", padx=8, pady=(0, 4))
 
-        # Generated code
-        tk.Label(card, text="⚡ Generated Python:", font=FONT_MONO_B,
+        # Generated code preview
+        tk.Label(card, text="Preview:", font=FONT_MONO_B,
                  bg=BG2, fg=TEXT_DIM).pack(anchor="w", padx=8, pady=(2, 0))
 
         code_box = _ScrollText(card, height=5, bg=CODE_BG)
@@ -398,22 +399,35 @@ class OverlayUI:
         btn_row = tk.Frame(card, bg=BG2)
         btn_row.pack(fill="x", padx=8, pady=(0, 8))
 
-        apply_btn = tk.Button(
+        regenerate_btn = tk.Button(
             btn_row,
-            text="✅ Apply to File",
+            text="✨ Generate Another",
+            font=FONT_UI_B,
+            bg=ACCENT_BLUE, fg=BG,
+            relief="flat", bd=0,
+            padx=10, pady=4,
+            cursor="hand2",
+            activebackground="#388bfd", activeforeground=BG,
+            command=lambda i=item: self._regenerate_english(i),
+        )
+        regenerate_btn.pack(side="left", padx=(0, 6))
+
+        paste_btn = tk.Button(
+            btn_row,
+            text="✅ Paste to .py",
             font=FONT_UI_B,
             bg=ACCENT_GRN, fg=BG,
             relief="flat", bd=0,
             padx=10, pady=4,
             cursor="hand2",
             activebackground="#2ea043", activeforeground=BG,
-            command=lambda i=item: self._apply_conversion(i),
+            command=lambda i=item: self._paste_conversion(i),
         )
-        apply_btn.pack(side="left", padx=(0, 6))
+        paste_btn.pack(side="left", padx=(0, 6))
 
         copy_btn = tk.Button(
             btn_row,
-            text="📋 Copy Code",
+            text="📋 Copy",
             font=FONT_UI,
             bg=BG3, fg=TEXT,
             relief="flat", bd=0,
@@ -424,22 +438,47 @@ class OverlayUI:
         )
         copy_btn.pack(side="left")
 
-    def _apply_conversion(self, item: Dict):
-        """Replace the English line in the file with the generated code."""
+    def _regenerate_english(self, item: Dict):
+        self.status_dot.config(text="◌  Generating…", fg=ACCENT_YLW)
+        self._status_bar.config(text="Generating another English→Code preview…")
+        self.ai_engine.generate_english_conversion(
+            self._current_code,
+            item["line_idx"],
+            item["english"],
+            callback=lambda updated: self.root.after(0, self._handle_english_variant, updated),
+            variant=True,
+        )
+
+    def _handle_english_variant(self, updated: Dict):
+        for idx, existing in enumerate(self._english_items):
+            if existing.get("line_idx") == updated.get("line_idx"):
+                self._english_items[idx] = updated
+                break
+        else:
+            self._english_items.append(updated)
+        self._render_english_cards()
+        self._set_analyzing_state(False)
+
+    def _paste_conversion(self, item: Dict):
+        """Replace the English line in the file with the generated code preview."""
         lines = self._current_code.splitlines(keepends=True)
         if item["line_idx"] >= len(lines):
             messagebox.showerror("Error", "Line index out of range. Save again.")
             return
-        # Replace the line
-        indent = len(lines[item["line_idx"]]) - len(lines[item["line_idx"]].lstrip())
-        lines[item["line_idx"]] = item["code"] + "\n"
+
+        replacement = item["code"].rstrip("\n")
+        replacement_lines = [f"{line}\n" for line in replacement.splitlines()]
+        if not replacement_lines:
+            replacement_lines = ["\n"]
+
+        lines[item["line_idx"] : item["line_idx"] + 1] = replacement_lines
         new_content = "".join(lines)
         try:
             self.file_watcher.write(new_content)
             self._current_code = new_content
             messagebox.showinfo(
-                "Applied ✅",
-                f"English line replaced!\n\nNotepad may ask you to reload the file — click YES.",
+                "Pasted ✅",
+                "Generated code pasted into the file.\n\nNotepad may ask you to reload the file — click YES.",
             )
         except Exception as exc:
             messagebox.showerror("Write Error", str(exc))

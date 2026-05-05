@@ -15,7 +15,8 @@ Write Python in Notepad, press **Ctrl+S**, and a floating overlay instantly show
 
 - **Python 3.9+**
 - **Windows** (Notepad auto-launch; the overlay itself runs on any OS with Tk)
-- An **Anthropic API key** in your environment
+- **Ollama** running locally on `http://localhost:11434`
+- A pulled coding model such as `qwen2.5-coder:1.5b`
 
 ---
 
@@ -28,10 +29,15 @@ cd notepadai
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Set your Anthropic API key
-set ANTHROPIC_API_KEY=sk-ant-...      # Windows CMD
-$env:ANTHROPIC_API_KEY="sk-ant-..."   # PowerShell
-export ANTHROPIC_API_KEY="sk-ant-..." # macOS/Linux
+# 3. Start Ollama and pull a model if needed
+ollama serve
+ollama pull qwen2.5-coder:1.5b
+
+# 4. Optional overrides
+set NOTEPADAI_OLLAMA_URL=http://localhost:11434      # Windows CMD
+$env:NOTEPADAI_OLLAMA_URL="http://localhost:11434"   # PowerShell
+set NOTEPADAI_OLLAMA_MODEL=qwen2.5-coder:1.5b       # Windows CMD
+$env:NOTEPADAI_OLLAMA_MODEL="qwen2.5-coder:1.5b"    # PowerShell
 ```
 
 ---
@@ -71,7 +77,7 @@ Click **✅ Apply to File** to replace the sentence in-place — Notepad will as
 ```
 notepadai/
 ├── main.py           # Entry point — wires everything together
-├── ai_engine.py      # Claude API calls (suggestions + English→Code)
+├── ai_engine.py      # Ollama API calls (suggestions + English→Code)
 ├── file_watcher.py   # File change detection (watchdog or polling fallback)
 ├── ui_overlay.py     # Floating Tk overlay window
 ├── requirements.txt
@@ -91,7 +97,7 @@ Notepad (Ctrl+S)
       ▼                                                     │
  AIEngine.debounced_analyze()  (1.8 s debounce)            │
       │                                                     │
-      ├─► _fetch_suggestions()  ──► Claude API ──► JSON    │
+      ├─► _fetch_suggestions()  ──► Ollama API ──► JSON    │
       │         ▼                                           │
       │   OverlayUI._update_suggestions()                  │
       │   (Next Step tab + Improve tab updated)             │
@@ -100,7 +106,7 @@ Notepad (Ctrl+S)
                 ▼                                           │
           detect_english_lines()  (heuristic regex)        │
                 ▼                                           │
-          Claude API × N lines                             │
+          Ollama API × N lines                             │
                 ▼                                           │
           OverlayUI._update_english()                      │
           (English→Code tab updated)                        │
